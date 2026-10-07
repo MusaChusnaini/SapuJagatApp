@@ -1,98 +1,86 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useLoginLogic } from "../hooks/loginLogic";
+import { inlineTheme, styles } from "../styles/styling";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+export default function LoginScreen() {
+  // Panggil data dan fungsi dari file logika (Tugas Kamu)
+  const { role, setRole, errorMsg, handleLogin, inputList, roles } =
+    useLoginLogic();
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <View style={styles.container}>
+      {/* Header dengan kombinasi Style External & Style dari Preset */}
+      <View style={{ marginBottom: 20 }}>
+        <Text style={styles.title}>
+          Cleaning <Text style={inlineTheme.brandHighlight}>Service</Text>
+        </Text>
+        <Text style={styles.subtitle}>Pilih peran dan masuk ke akun kamu</Text>
+      </View>
+
+      {/* LOOPING 1: Render Pilihan Role (Menggunakan .map) */}
+      <View style={styles.roleContainer}>
+        {roles.map((item) => (
+          <TouchableOpacity
+            key={item}
+            style={[styles.roleButton, role === item && styles.roleActive]}
+            onPress={() => setRole(item)}
+          >
+            <Text
+              style={role === item ? styles.roleTextActive : styles.roleText}
+            >
+              {item === "user" ? "Pelanggan (User)" : "Pembersih (Cleaner)"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* LOOPING 2: Render Dynamic Form Inputs (Menggunakan .map dari array hasil loop) */}
+      {inputList.map((item) => (
+        <View key={item.id} style={styles.inputGroup}>
+          <Text style={styles.label}>{item.label}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder={item.placeholder}
+            value={item.value}
+            onChangeText={item.onChange}
+            secureTextEntry={item.secure}
+            autoCapitalize="none"
+          />
+        </View>
+      ))}
+
+      {/* Menampilkan pesan error validasi hasil Custom Function */}
+      {errorMsg ? (
+        <Text style={[styles.errorText, { fontStyle: "italic" }]}>
+          {errorMsg}
+        </Text>
+      ) : null}
+
+      {/* Tombol Login yang memanggil Custom Function handleLogin */}
+      <TouchableOpacity
+        style={[styles.loginButton, inlineTheme.cardShadow]}
+        onPress={handleLogin}
+      >
+        <Text style={styles.buttonText}>
+          Login sebagai {role.toUpperCase()}
+        </Text>
+      </TouchableOpacity>
+
+      {/*
+        ============================================================
+        PETUNJUK BAGI ANGGOTA KELOMPOK LAIN:
+        ------------------------------------------------------------
+        TEMAN A (Poin 2: Type & Array of Objects):
+        1. Buat file `types.ts` untuk mendefinisikan interface/type
+           (misal: `User`, `Cleaner`, `FormConfig`).
+        2. Buat array of objects berisi mock data pengguna/cleaner.
+
+        TEMAN B (Poin 3: Inline & External Styles):
+        1. Kembangkan `styling.ts` untuk external styles.
+        2. Tambahkan properti inline style secara langsung pada komponen di `index.tsx`
+           contoh: style={{ marginTop: 10, padding: 5 }}
+        ============================================================
+      */}
+    </View>
   );
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
