@@ -1,6 +1,6 @@
 import { ThemeContext } from "@/context/ThemeContext";
 import { useRouter } from "expo-router";
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLoginLogic } from "../hooks/loginLogic";
 import { inlineTheme, styles } from "../styles/styling";
@@ -14,11 +14,14 @@ export default function LoginScreen() {
   const { isDarkMode, toggleDarkMode } = useContext(ThemeContext);
 
   // Variabel gaya kondisional
-  const bgColor = isDarkMode ? "#4b4b4b" : "#f8f9fa";
+  const bgColor = isDarkMode ? "#121212" : "#f8f9fa";
   const textColor = isDarkMode ? "#ffffff" : "#2c3e50";
 
   const router = useRouter();
 
+  useEffect(() => {
+    console.log("Njir berubah");
+  }, [role]);
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={{ marginBottom: 20 }}>
@@ -36,7 +39,9 @@ export default function LoginScreen() {
           <TouchableOpacity
             key={item}
             style={[styles.roleButton, role === item && styles.roleActive]}
-            onPress={() => setRole(item)}
+            onPress={() => {
+              setRole(item);
+            }}
           >
             <Text
               style={role === item ? styles.roleTextActive : styles.roleText}

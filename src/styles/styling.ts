@@ -91,6 +91,8 @@ export const styles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 13,
   },
+
+  toggleButton: { backgroundColor: "#3498db", padding: 12, borderRadius: 8 },
 });
 
 // Contoh preset style object yang bisa dipanggil sebagai inline style

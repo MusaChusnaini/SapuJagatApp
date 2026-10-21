@@ -40,7 +40,7 @@ export const useLoginLogic = () => {
       "Login Berhasil",
       `Selamat datang ${role.toUpperCase()}!\nEmail: ${email}`,
     );
-    router.push({ pathname: "/dashboard" });
+    router.push({ pathname: "/dashboard", params: { currentRole: role } });
   };
 
   // ===================================================
