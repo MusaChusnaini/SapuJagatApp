@@ -27,6 +27,7 @@ export const useLoginLogic = () => {
   // CUSTOM FUNCTION 2: Process/Submit Login
   // ===================================================
   const handleLogin = () => {
+    console.log("Lakukan Login.");
     const error = validateInput(email, password);
     if (error) {
       setErrorMsg(error);

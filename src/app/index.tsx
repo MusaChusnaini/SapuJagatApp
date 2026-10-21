@@ -1,3 +1,6 @@
+import { ThemeContext } from "@/context/ThemeContext";
+import { useRouter } from "expo-router";
+import { useContext } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLoginLogic } from "../hooks/loginLogic";
 import { inlineTheme, styles } from "../styles/styling";
@@ -7,17 +10,27 @@ export default function LoginScreen() {
   const { role, setRole, errorMsg, handleLogin, inputList, roles } =
     useLoginLogic();
 
+  // Mengambil state dan fungsi dari Context
+  const { isDarkMode, toggleDarkMode } = useContext(ThemeContext);
+
+  // Variabel gaya kondisional
+  const bgColor = isDarkMode ? "#4b4b4b" : "#f8f9fa";
+  const textColor = isDarkMode ? "#ffffff" : "#2c3e50";
+
+  const router = useRouter();
+
   return (
-    <View style={styles.container}>
-      {/* Header dengan kombinasi Style External & Style dari Preset */}
+    <View style={[styles.container, { backgroundColor: bgColor }]}>
       <View style={{ marginBottom: 20 }}>
-        <Text style={styles.title}>
-          Cleaning <Text style={inlineTheme.brandHighlight}>Service</Text>
+        <Text style={[styles.title, { color: textColor }]}>
+          Sapu
+          <Text style={inlineTheme.brandHighlight}>Jagat</Text>
         </Text>
-        <Text style={styles.subtitle}>Pilih peran dan masuk ke akun kamu</Text>
+        <Text style={[styles.subtitle, { color: textColor }]}>
+          Pilih peran dan masuk ke akun kamu
+        </Text>
       </View>
 
-      {/* LOOPING 1: Render Pilihan Role (Menggunakan .map) */}
       <View style={styles.roleContainer}>
         {roles.map((item) => (
           <TouchableOpacity
@@ -34,12 +47,15 @@ export default function LoginScreen() {
         ))}
       </View>
 
-      {/* LOOPING 2: Render Dynamic Form Inputs (Menggunakan .map dari array hasil loop) */}
       {inputList.map((item) => (
         <View key={item.id} style={styles.inputGroup}>
-          <Text style={styles.label}>{item.label}</Text>
+          <Text style={[styles.label, { color: textColor }]}>{item.label}</Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              { color: textColor },
+              { backgroundColor: bgColor },
+            ]}
             placeholder={item.placeholder}
             value={item.value}
             onChangeText={item.onChange}
@@ -49,7 +65,6 @@ export default function LoginScreen() {
         </View>
       ))}
 
-      {/* Menampilkan pesan error validasi hasil Custom Function */}
       {errorMsg ? (
         <Text style={[styles.errorText, { fontStyle: "italic" }]}>
           {errorMsg}
@@ -59,28 +74,15 @@ export default function LoginScreen() {
       {/* Tombol Login yang memanggil Custom Function handleLogin */}
       <TouchableOpacity
         style={[styles.loginButton, inlineTheme.cardShadow]}
-        onPress={handleLogin}
+        onPress={() => {
+          handleLogin();
+          router.push({ pathname: "/dashboard" });
+        }}
       >
         <Text style={styles.buttonText}>
           Login sebagai {role.toUpperCase()}
         </Text>
       </TouchableOpacity>
-
-      {/*
-        ============================================================
-        PETUNJUK BAGI ANGGOTA KELOMPOK LAIN:
-        ------------------------------------------------------------
-        TEMAN A (Poin 2: Type & Array of Objects):
-        1. Buat file `types.ts` untuk mendefinisikan interface/type
-           (misal: `User`, `Cleaner`, `FormConfig`).
-        2. Buat array of objects berisi mock data pengguna/cleaner.
-
-        TEMAN B (Poin 3: Inline & External Styles):
-        1. Kembangkan `styling.ts` untuk external styles.
-        2. Tambahkan properti inline style secara langsung pada komponen di `index.tsx`
-           contoh: style={{ marginTop: 10, padding: 5 }}
-        ============================================================
-      */}
     </View>
   );
 }
