@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Alert } from "react-native";
+import { useEffect, useState } from "react";
 
 export const useLoginLogic = () => {
   const [role, setRole] = useState<"user" | "cleaner">("user");
@@ -8,6 +7,16 @@ export const useLoginLogic = () => {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
+
+  useEffect(() => {
+    if (errorMsg) {
+      const timer = setTimeout(() => {
+        setErrorMsg("");
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg]);
 
   // ===================================================
   // CUSTOM FUNCTION 1: Validasi Input Form
@@ -26,26 +35,25 @@ export const useLoginLogic = () => {
   };
 
   // ===================================================
-  // CUSTOM FUNCTION 2: Process/Submit Login
+  // CUSTOM FUNCTION 2: Process/Submit Login (DIPERBAIKI)
   // ===================================================
   const handleLogin = () => {
-    console.log("Lakukan Login.");
-    const error = validateInput(email, password);
-    if (error) {
-      setErrorMsg(error);
-      return;
+    // 1. Jalankan fungsi validasi
+    const validationError = validateInput(email, password);
+
+    // 2. Jika ada pesan error dari validasi, masukkan ke state
+    if (validationError) {
+      setErrorMsg(validationError); // Ini akan memicu useEffect di atas secara otomatis!
+      return; // Hentikan fungsi di sini, jangan lakukan navigasi
     }
-    setErrorMsg("");
-    Alert.alert(
-      "Login Berhasil",
-      `Selamat datang ${role.toUpperCase()}!\nEmail: ${email}`,
-    );
-    router.push({ pathname: "/dashboard", params: { currentRole: role } });
+
+    // 3. Jika lolos validasi, lakukan login dan navigasi menggunakan replace
+    console.log("Validasi sukses, Lakukan Login.");
+    router.replace({ pathname: "/dashboard", params: { currentRole: role } });
   };
 
   // ===================================================
   // LOOPING 1: Generate List Config untuk Input Form
-  // (Menggunakan 'for' loop untuk membentuk array)
   // ===================================================
   const getFormInputList = () => {
     const rawInputs = [
@@ -74,7 +82,6 @@ export const useLoginLogic = () => {
     return inputList;
   };
 
-  // Array Role untuk pilihan login
   const roles: Array<"user" | "cleaner"> = ["user", "cleaner"];
 
   return {
