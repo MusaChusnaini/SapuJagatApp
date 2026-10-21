@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert } from "react-native";
 
@@ -6,6 +7,7 @@ export const useLoginLogic = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const router = useRouter();
 
   // ===================================================
   // CUSTOM FUNCTION 1: Validasi Input Form
@@ -38,6 +40,7 @@ export const useLoginLogic = () => {
       "Login Berhasil",
       `Selamat datang ${role.toUpperCase()}!\nEmail: ${email}`,
     );
+    router.push({ pathname: "/dashboard" });
   };
 
   // ===================================================

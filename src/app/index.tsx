@@ -76,7 +76,6 @@ export default function LoginScreen() {
         style={[styles.loginButton, inlineTheme.cardShadow]}
         onPress={() => {
           handleLogin();
-          router.push({ pathname: "/dashboard" });
         }}
       >
         <Text style={styles.buttonText}>
