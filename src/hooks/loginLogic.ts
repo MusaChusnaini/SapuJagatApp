@@ -49,7 +49,7 @@ export const useLoginLogic = () => {
 
     // 3. Jika lolos validasi, lakukan login dan navigasi menggunakan replace
     console.log("Validasi sukses, Lakukan Login.");
-    router.replace({ pathname: "/dashboard", params: { currentRole: role } });
+    router.push({ pathname: "/dashboard", params: { currentRole: role } });
   };
 
   // ===================================================
