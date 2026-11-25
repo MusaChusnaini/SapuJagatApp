@@ -3,6 +3,7 @@ import { useContext, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,72 +11,202 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { supabase } from "../../../lib/supabase";
 import { ThemeContext } from "../../context/ThemeContext";
 
-// Interface Data Dummy
-interface CleanerData {
-  id: number;
-  nama: string;
-  rating: string | number;
-  biaya: string;
-  status: string;
-  totalSelesai: number;
-  totalPendapatan: string;
-  jamKerja: string;
+interface CleanerItem {
+  id: string;
+  name: string;
+  bio: string | null;
+  rating: number | null;
+  is_available: boolean;
+  profile_id: string | null;
 }
 
-// -------------------------------------------------------------
-// DUMMY DATA LOKAL (Tanpa Backend/API Server External)
-// -------------------------------------------------------------
-const INITIAL_DUMMY_DATA: CleanerData = {
-  id: 1,
-  nama: "Budi Santoso",
-  rating: "4.8",
-  biaya: "Rp 50.000 / Jam",
-  status: "Tersedia",
-  totalSelesai: 124,
-  totalPendapatan: "Rp 3.500.000",
-  jamKerja: "180 Jam",
-};
+interface ServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  duration_minutes: number;
+}
 
 export default function UserDashboard() {
   const { isDarkMode, toggleDarkMode } = useContext(ThemeContext);
   const params = useLocalSearchParams();
-  const currentRole = Array.isArray(params.currentRole)
-    ? params.currentRole[0]
-    : params.currentRole;
   const router = useRouter();
 
-  // State Lokal
-  const [cleanerData, setCleanerData] = useState<CleanerData | null>(null);
+  // State Peran & Profil Pengguna Aktif
+  const paramRole = Array.isArray(params.currentRole)
+    ? params.currentRole[0]
+    : params.currentRole;
+  const [activeRole, setActiveRole] = useState<"customer" | "cleaner">(
+    (paramRole as "customer" | "cleaner") || "customer",
+  );
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>("Pengguna");
+
+  // State Data Cloud Supabase
+  const [cleanersList, setCleanersList] = useState<CleanerItem[]>([]);
+  const [defaultService, setDefaultService] = useState<ServiceItem | null>(
+    null,
+  );
+  const [myCleanerProfile, setMyCleanerProfile] = useState<CleanerItem | null>(
+    null,
+  );
+  const [completedCount, setCompletedCount] = useState<number>(0);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isHired, setIsHired] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [hiringId, setHiringId] = useState<string | null>(null);
 
-  // Load Dummy Data saat halaman dibuka (simulasi async 500ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCleanerData(INITIAL_DUMMY_DATA);
-      if (INITIAL_DUMMY_DATA.status === "Sedang Disewa") {
-        setIsHired(true);
+  // ===================================================
+  // 1. AMBIL DATA PROFIL & CLOUD DARI SUPABASE
+  // ===================================================
+  const fetchDashboardData = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/");
+        return;
       }
-      setLoading(false);
-    }, 500);
 
-    return () => clearTimeout(timer);
+      setUserId(user.id);
+
+      // Ambil role & nama dari tabel 'profiles'
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, role")
+        .eq("id", user.id)
+        .single();
+
+      const resolvedRole =
+        (profile?.role as "customer" | "cleaner") || activeRole;
+      setActiveRole(resolvedRole);
+      if (profile?.full_name) setUserName(profile.full_name);
+
+      if (resolvedRole === "customer") {
+        // MODE CUSTOMER: Ambil daftar cleaner & layanan aktif
+        const [cleanersRes, servicesRes] = await Promise.all([
+          supabase
+            .from("cleaners")
+            .select("*")
+            .order("rating", { ascending: false }),
+          supabase
+            .from("services")
+            .select("*")
+            .eq("is_active", true)
+            .limit(1)
+            .single(),
+        ]);
+
+        if (cleanersRes.data) setCleanersList(cleanersRes.data);
+        if (servicesRes.data) setDefaultService(servicesRes.data);
+      } else {
+        // MODE CLEANER: Ambil data profil cleaner & statistik order dari 'bookings'
+        const { data: cleanerRow } = await supabase
+          .from("cleaners")
+          .select("*")
+          .eq("profile_id", user.id)
+          .single();
+
+        if (cleanerRow) {
+          setMyCleanerProfile(cleanerRow);
+
+          const { data: bookingsData } = await supabase
+            .from("bookings")
+            .select("total_price, status")
+            .eq("cleaner_id", cleanerRow.id);
+
+          if (bookingsData) {
+            const done = bookingsData.filter((b) => b.status === "completed");
+            const income = done.reduce(
+              (sum, b) => sum + (b.total_price || 0),
+              0,
+            );
+            setCompletedCount(done.length);
+            setTotalIncome(income);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Gagal memuat dashboard:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
   }, []);
 
-  // Handler Tombol Hire (Simulasi Lokal)
-  const handleHireCleaner = () => {
-    if (isHired) return;
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchDashboardData();
+  };
 
-    setIsHired(true);
-    setCleanerData((prev) =>
-      prev ? { ...prev, status: "Sedang Disewa" } : null,
+  // ===================================================
+  // 2. HANDLER SEWA CLEANER (INSERT KE TABEL BOOKINGS + OPTIMISTIC UI)
+  // ===================================================
+  const handleHireCleaner = async (cleaner: CleanerItem) => {
+    if (!cleaner.is_available || hiringId || !userId) return;
+
+    if (!defaultService) {
+      Alert.alert(
+        "Layanan Belum Tersedia",
+        "Tambahkan minimal 1 data layanan di tabel 'services' Supabase terlebih dahulu.",
+      );
+      return;
+    }
+
+    setHiringId(cleaner.id);
+
+    // Optimistic UI: langsung ubah status di layar sebelum response server selesai
+    setCleanersList((prev) =>
+      prev.map((item) =>
+        item.id === cleaner.id ? { ...item, is_available: false } : item,
+      ),
     );
-    Alert.alert(
-      "Berhasil!",
-      `Berhasil menyewa ${cleanerData?.nama || "Cleaner"}.`,
-    );
+
+    try {
+      const { error } = await supabase.from("bookings").insert([
+        {
+          user_id: userId,
+          service_id: defaultService.id,
+          cleaner_id: cleaner.id,
+          scheduled_at: new Date().toISOString(),
+          address: "Alamat Pelanggan",
+          notes: "Pemesanan langsung dari Dashboard",
+          total_price: defaultService.price,
+          status: "pending",
+        },
+      ]);
+
+      if (error) throw error;
+
+      Alert.alert("Berhasil!", `Berhasil menyewa ${cleaner.name}.`);
+    } catch (err: any) {
+      // Rollback jika gagal menyimpan ke database
+      setCleanersList((prev) =>
+        prev.map((item) =>
+          item.id === cleaner.id ? { ...item, is_available: true } : item,
+        ),
+      );
+      Alert.alert("Gagal Menyewa", err.message || "Terjadi kesalahan.");
+    } finally {
+      setHiringId(null);
+    }
+  };
+
+  // ===================================================
+  // 3. HANDLER LOGOUT (HAPUS SESI TOKEN SECURESTORE)
+  // ===================================================
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/");
   };
 
   const theme = {
@@ -85,21 +216,31 @@ export default function UserDashboard() {
     textSecondary: isDarkMode ? "#A0AEC0" : "#718096",
     border: isDarkMode ? "#2D3748" : "#E2E8F0",
     buttonBg: "#007AFF",
-    hireButtonBg: isHired ? "#A0AEC0" : "#38A169",
-    badgeBg: isHired ? "#FFF5F5" : "#F0FFF4",
-    badgeText: isHired ? "#E53E3E" : "#38A169",
   };
 
-  const isUser = currentRole === "user";
+  const isCustomer = activeRole === "customer";
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <Text style={[styles.title, { color: theme.textPrimary }]}>
-          Dashboard {isUser ? "Pengguna" : "Cleaner"}
+          Dashboard {isCustomer ? "Pengguna" : "Cleaner"}
+        </Text>
+        <Text
+          style={{
+            textAlign: "center",
+            color: theme.textSecondary,
+            marginBottom: 16,
+          }}
+        >
+          Halo, {userName}
         </Text>
 
-        {/* Indikator Loading */}
         {loading ? (
           <ActivityIndicator
             size="large"
@@ -108,81 +249,133 @@ export default function UserDashboard() {
           />
         ) : (
           <>
-            {isUser ? (
-              /* TAMPILAN USER */
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: theme.cardBg, borderColor: theme.border },
-                ]}
-              >
-                <View style={styles.cardHeader}>
-                  <Text
-                    style={[styles.cleanerName, { color: theme.textPrimary }]}
-                  >
-                    {cleanerData?.nama || "Budi Santoso"}
-                  </Text>
-                  <View
-                    style={[styles.badge, { backgroundColor: theme.badgeBg }]}
-                  >
-                    <Text
-                      style={[styles.badgeText, { color: theme.badgeText }]}
-                    >
-                      {isHired
-                        ? "Sedang Disewa"
-                        : cleanerData?.status || "Tersedia"}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.divider} />
-
-                <View style={styles.infoRow}>
-                  <Text
-                    style={[styles.infoLabel, { color: theme.textSecondary }]}
-                  >
-                    Rating:
-                  </Text>
-                  <Text
-                    style={[styles.infoValue, { color: theme.textPrimary }]}
-                  >
-                    {cleanerData?.rating
-                      ? `${cleanerData.rating} ⭐`
-                      : "4.8 ⭐"}
-                  </Text>
-                </View>
-
-                <View style={styles.infoRow}>
-                  <Text
-                    style={[styles.infoLabel, { color: theme.textSecondary }]}
-                  >
-                    Biaya Layanan:
-                  </Text>
-                  <Text
-                    style={[styles.infoValue, { color: theme.textPrimary }]}
-                  >
-                    {cleanerData?.biaya || "Rp 50.000 / Jam"}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={handleHireCleaner}
-                  disabled={isHired}
+            {isCustomer ? (
+              /* ================= TAMPILAN CUSTOMER ================= */
+              cleanersList.length === 0 ? (
+                <View
                   style={[
-                    styles.hireButton,
-                    { backgroundColor: theme.hireButtonBg },
+                    styles.card,
+                    {
+                      backgroundColor: theme.cardBg,
+                      borderColor: theme.border,
+                    },
                   ]}
-                  activeOpacity={0.8}
                 >
-                  <Text style={styles.buttonText}>
-                    {isHired
-                      ? "Cleaner Sedang Bertugas"
-                      : "Sewa Cleaner (Hire)"}
+                  <Text
+                    style={{ color: theme.textSecondary, textAlign: "center" }}
+                  >
+                    Belum ada mitra cleaner terdaftar di database.
                   </Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              ) : (
+                cleanersList.map((cleaner) => {
+                  const available = cleaner.is_available;
+                  return (
+                    <View
+                      key={cleaner.id}
+                      style={[
+                        styles.card,
+                        {
+                          backgroundColor: theme.cardBg,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.cardHeader}>
+                        <Text
+                          style={[
+                            styles.cleanerName,
+                            { color: theme.textPrimary },
+                          ]}
+                        >
+                          {cleaner.name}
+                        </Text>
+                        <View
+                          style={[
+                            styles.badge,
+                            {
+                              backgroundColor: available
+                                ? "#F0FFF4"
+                                : "#FFF5F5",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.badgeText,
+                              { color: available ? "#38A169" : "#E53E3E" },
+                            ]}
+                          >
+                            {available ? "Tersedia" : "Sedang Disewa"}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.divider} />
+
+                      <View style={styles.infoRow}>
+                        <Text
+                          style={[
+                            styles.infoLabel,
+                            { color: theme.textSecondary },
+                          ]}
+                        >
+                          Rating:
+                        </Text>
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            { color: theme.textPrimary },
+                          ]}
+                        >
+                          {cleaner.rating ?? 5.0} ⭐
+                        </Text>
+                      </View>
+
+                      <View style={styles.infoRow}>
+                        <Text
+                          style={[
+                            styles.infoLabel,
+                            { color: theme.textSecondary },
+                          ]}
+                        >
+                          Biaya Layanan:
+                        </Text>
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            { color: theme.textPrimary },
+                          ]}
+                        >
+                          {defaultService
+                            ? `Rp ${defaultService.price.toLocaleString("id-ID")}`
+                            : "Rp 50.000 / Jam"}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => handleHireCleaner(cleaner)}
+                        disabled={!available || hiringId === cleaner.id}
+                        style={[
+                          styles.hireButton,
+                          {
+                            backgroundColor: available ? "#38A169" : "#A0AEC0",
+                          },
+                        ]}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.buttonText}>
+                          {available
+                            ? "Sewa Cleaner (Hire)"
+                            : "Cleaner Sedang Bertugas"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )
             ) : (
-              /* TAMPILAN CLEANER */
+              /* ================= TAMPILAN CLEANER ================= */
               <View
                 style={[
                   styles.card,
@@ -190,7 +383,7 @@ export default function UserDashboard() {
                 ]}
               >
                 <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>
-                  Performa Saya ({cleanerData?.nama || "Budi Santoso"})
+                  Performa Saya ({myCleanerProfile?.name || userName})
                 </Text>
 
                 <View style={styles.performanceGrid}>
@@ -203,9 +396,7 @@ export default function UserDashboard() {
                     <Text
                       style={[styles.perfValue, { color: theme.textPrimary }]}
                     >
-                      {cleanerData?.rating
-                        ? `${cleanerData.rating} ⭐`
-                        : "4.8 ⭐"}
+                      {myCleanerProfile?.rating ?? 5.0} ⭐
                     </Text>
                   </View>
 
@@ -218,7 +409,7 @@ export default function UserDashboard() {
                     <Text
                       style={[styles.perfValue, { color: theme.textPrimary }]}
                     >
-                      {cleanerData?.totalSelesai || 124} Order
+                      {completedCount} Order
                     </Text>
                   </View>
 
@@ -229,7 +420,7 @@ export default function UserDashboard() {
                       Pendapatan
                     </Text>
                     <Text style={[styles.perfValue, { color: "#38A169" }]}>
-                      {cleanerData?.totalPendapatan || "Rp 3.500.000"}
+                      Rp {totalIncome.toLocaleString("id-ID")}
                     </Text>
                   </View>
 
@@ -237,12 +428,14 @@ export default function UserDashboard() {
                     <Text
                       style={[styles.perfLabel, { color: theme.textSecondary }]}
                     >
-                      Jam Kerja
+                      Status Mitra
                     </Text>
                     <Text
                       style={[styles.perfValue, { color: theme.textPrimary }]}
                     >
-                      {cleanerData?.jamKerja || "180 Jam"}
+                      {myCleanerProfile?.is_available !== false
+                        ? "Tersedia"
+                        : "Bertugas"}
                     </Text>
                   </View>
                 </View>
@@ -264,17 +457,11 @@ export default function UserDashboard() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace("/");
-              }
-            }}
-            style={[styles.actionButton, { backgroundColor: theme.buttonBg }]}
+            onPress={handleLogout}
+            style={[styles.actionButton, { backgroundColor: "#E53E3E" }]}
             activeOpacity={0.8}
           >
-            <Text style={styles.buttonText}>Kembali ke Login Screen</Text>
+            <Text style={styles.buttonText}>Keluar (Sign Out)</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -289,13 +476,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     textAlign: "center",
-    marginVertical: 20,
+    marginTop: 20,
+    marginBottom: 4,
   },
   card: {
     padding: 18,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -337,7 +525,7 @@ const styles = StyleSheet.create({
   perfBox: { width: "48%", padding: 12, borderRadius: 8, marginBottom: 10 },
   perfLabel: { fontSize: 12, marginBottom: 4 },
   perfValue: { fontSize: 16, fontWeight: "700" },
-  buttonActionContainer: { gap: 12 },
+  buttonActionContainer: { gap: 12, marginTop: 8 },
   actionButton: {
     width: "100%",
     paddingVertical: 14,

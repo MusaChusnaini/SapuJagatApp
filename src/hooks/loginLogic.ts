@@ -1,10 +1,14 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
 
 export const useLoginLogic = () => {
-  const [role, setRole] = useState<"user" | "cleaner">("user");
+  const [role, setRole] = useState<"customer" | "cleaner">("customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const router = useRouter();
 
@@ -31,25 +35,101 @@ export const useLoginLogic = () => {
     if (userPassword.length < 6) {
       return "Password minimal 6 karakter!";
     }
+    if (isRegistering && !fullName.trim()) {
+      return "Nama lengkap wajib diisi saat pendaftaran!";
+    }
     return "";
   };
 
   // ===================================================
-  // CUSTOM FUNCTION 2: Process/Submit Login (DIPERBAIKI)
+  // CUSTOM FUNCTION 2: Process/Submit Login & Register ke Supabase
   // ===================================================
-  const handleLogin = () => {
-    // 1. Jalankan fungsi validasi
-    const validationError = validateInput(email, password);
+  const handleLogin = async () => {
+    if (loading) return;
 
-    // 2. Jika ada pesan error dari validasi, masukkan ke state
+    const cleanEmail = email.trim();
+    const cleanName = fullName.trim();
+
+    const validationError = validateInput(cleanEmail, password);
     if (validationError) {
-      setErrorMsg(validationError); // Ini akan memicu useEffect di atas secara otomatis!
-      return; // Hentikan fungsi di sini, jangan lakukan navigasi
+      setErrorMsg(validationError);
+      return;
     }
 
-    // 3. Jika lolos validasi, lakukan login dan navigasi menggunakan replace
-    console.log("Validasi sukses, Lakukan Login.");
-    router.push({ pathname: "/dashboard", params: { currentRole: role } });
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      if (isRegistering) {
+        // ==========================================
+        // ALUR A: PENDAFTARAN AKUN BARU (SIGN UP)
+        // ==========================================
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: password,
+          options: {
+            data: {
+              full_name: cleanName,
+              role: role,
+            },
+          },
+        });
+
+        if (error) {
+          setErrorMsg(error.message);
+          return;
+        }
+
+        // Trigger Supabase otomatis membuat baris di tabel 'profiles' dari options.data
+        if (data.user) {
+          console.log("Pendaftaran sukses! User ID:", data.user.id);
+          router.replace({
+            pathname: "/dashboard",
+            params: { currentRole: role },
+          });
+        }
+      } else {
+        // ==========================================
+        // ALUR B: MASUK AKUN (SIGN IN)
+        // ==========================================
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password,
+        });
+
+        if (error) {
+          setErrorMsg(error.message);
+          return;
+        }
+
+        if (data.user) {
+          // Ambil data role asli user dari tabel 'profiles'
+          const { data: profileData, error: profileError } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", data.user.id)
+            .single();
+
+          if (profileError) {
+            console.error("Gagal mengambil profil:", profileError.message);
+          }
+
+          const verifiedRole =
+            (profileData?.role as "customer" | "cleaner") || role;
+
+          console.log("Login sukses sebagai:", verifiedRole);
+          router.replace({
+            pathname: "/dashboard",
+            params: { currentRole: verifiedRole },
+          });
+        }
+      }
+    } catch (err) {
+      setErrorMsg("Terjadi kesalahan jaringan. Coba lagi.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ===================================================
@@ -57,6 +137,18 @@ export const useLoginLogic = () => {
   // ===================================================
   const getFormInputList = () => {
     const rawInputs = [
+      ...(isRegistering
+        ? [
+            {
+              id: "fullName",
+              label: "Nama Lengkap",
+              value: fullName,
+              onChange: setFullName,
+              secure: false,
+              placeholder: "Masukkan nama lengkap",
+            },
+          ]
+        : []),
       {
         id: "email",
         label: "Email Address",
@@ -82,12 +174,15 @@ export const useLoginLogic = () => {
     return inputList;
   };
 
-  const roles: Array<"user" | "cleaner"> = ["user", "cleaner"];
+  const roles: Array<"customer" | "cleaner"> = ["customer", "cleaner"];
 
   return {
     role,
     setRole,
     errorMsg,
+    loading,
+    isRegistering,
+    setIsRegistering,
     handleLogin,
     inputList: getFormInputList(),
     roles,
